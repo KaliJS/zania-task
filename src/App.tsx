@@ -1,123 +1,108 @@
 import React, { useState, useEffect } from "react";
-import { ICardData } from "./types";
-import Overlay from "./components/overlay";
-import Card from "./components/card";
+import { ITaskData } from "./types";
 
 const App = () => {
-  const [cards, setCards] = useState<ICardData[]>([]);
-  const [isImageOpen, setIsImageOpen] = useState<string | null>(null);
-  const [lastSaveTime, setLastSaveTime] = useState<number>(Date.now());
-  const [isSaving, setIsSaving] = useState<boolean>(false);
-  const [draggingCardIndex, setDraggingCardIndex] = useState<number | null>(null);
-  const [timeSinceLastSave, setTimeSinceLastSave] = useState<number>(0);
+  const [tasks, setTasks] = useState<ITaskData[]>([]);
+  const [globalTasks, setGlobalTasks] = useState<ITaskData[]>([]);
+  const [title, setTitle] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
+  const [category, setCategory] = useState<string>('');
+  const [search, setSearch] = useState<string>('');
 
   // Fetch cards from the API
   useEffect(() => {
-    fetch("/api/cards")
+    fetch("/api/tasks")
       .then((response) => response.json())
-      .then((data) => setCards(data))
-      .catch((error) => console.error("Error fetching cards:", error));
+      .then((data) => {setTasks(data); setGlobalTasks(data);})
+      .catch((error) => console.error("Error fetching tasks:", error));
   }, []);
 
-  // Save to localStorage every 5 seconds if changes are made
-  useEffect(() => {
-    // Clear any existing timers
-    const timer = setTimeout(() => {
-      if (!isSaving) {
-        saveCards(cards); // Save the cards only after 5 seconds of the last change
+  const deleteHandler = (index:number) =>{
+    let newTasks = [...tasks];
+    newTasks.splice(index,1);
+    setTasks(newTasks)
+  }
+
+  
+  const doneHandler = (index:number) =>{
+    let newTasks = [...tasks];
+    newTasks = newTasks.map((task,ti)=>{
+      if(ti=== index){
+        return {...task,status: 'completed'}
       }
-    }, 5000); // Wait 5 seconds
+      return task;
+    });
+    setTasks(newTasks)
+  }
 
-    // Cleanup function to clear the timer when `cards` changes before the 5 seconds are up
-    return () => clearTimeout(timer);
-  }, [cards]);
 
-  // Close the overlay on ESC key press
-  useEffect(() => {
-    const handleEsc = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsImageOpen(null);
-      }
-    };
-    window.addEventListener("keydown", handleEsc);
-    return () => {
-      window.removeEventListener("keydown", handleEsc);
-    };
-  }, []);
 
-  // Timer to update the "last saved X seconds ago"
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTimeSinceLastSave(Math.floor((Date.now() - lastSaveTime) / 1000)); // Update every second
-    }, 1000);
+  const addHandler = () =>{
+    let newTasks = [...tasks, {
+        "id": tasks.length + 1,
+        "category": category,
+        "title": title,
+        "status": "pending",
+        "description": description
+    }];
+    setTasks(newTasks)
+    setTitle('');
+    setDescription('');
+    setCategory('');
+  }
 
-    return () => clearInterval(interval); // Cleanup when component unmounts
-  }, [lastSaveTime]); // Re-run only when `lastSaveTime` changes
-
-  // Function to save cards via API
-  const saveCards = (cards: ICardData[]) => {
-    setIsSaving(true);
-    fetch("/api/cards", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(cards),
-    })
-      .then((response) => response.json())
-      .then(() => {
-        setIsSaving(false);
-        setLastSaveTime(Date.now());
-      })
-      .catch((error) => {
-        console.error("Error saving cards:", error);
-        setIsSaving(false);
+  const onSearchChange = (query: string) =>{
+    setSearch(query);
+    if(query.trim().length > 0){
+      let newTasks = [...globalTasks];
+      newTasks = newTasks.filter((task)=>{
+        const modifiedQuery = query.toLocaleLowerCase();
+        const modifiedCategory = task.category.toLocaleLowerCase();
+        return modifiedCategory.includes(modifiedQuery);
       });
-  };
-
-  // Function to handle drag start
-  const handleDragStart = (index: number) => {
-    setDraggingCardIndex(index);
-  };
-
-  // Function to handle drag over
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
-    e.preventDefault(); // Prevent the default to allow for dropping
-    if (draggingCardIndex === null || draggingCardIndex === index) return;
-
-    const newCards = [...cards];
-    const draggedCard = newCards.splice(draggingCardIndex, 1)[0];
-    newCards.splice(index, 0, draggedCard);
-    setCards(newCards);
-    setDraggingCardIndex(index); // Update dragging index to new position
-  };
-
-  // Function to handle drag end
-  const handleDragEnd = () => {
-    setDraggingCardIndex(null); // Reset after drag is complete
-  };
+      setTasks(newTasks);
+      setSearch(query);
+    }else{
+      setTasks(globalTasks)
+    }
+  
+  }
 
   return (
     <>
-      <div className="grid-container">
-        {cards.map((card, index) => (
-          <Card
-            key={card.type}
-            card={card}
-            draggingCardIndex={draggingCardIndex}
-            index={index}
-            handleDragStart={() => handleDragStart(index)}
-            handleDragOver={(e) => handleDragOver(e, index)}
-            handleDragEnd={handleDragEnd}
-            handleClick={() => {
-              setIsImageOpen(card.thumbnail);
-            }}
-          />
-        ))}
+      <div>
+      <label >Search</label>
+        <input type='text' value={search} name="title" onChange={(e)=>{
+          onSearchChange(e.target.value)
+        }}/>
+        {tasks.map((task,index)=>{
+          return (
+            <div className="task-card" key={task.id} style={{
+              backgroundColor: task.status === 'completed'? 'green': 'white',
+              margin: '1rem'
+            }}>
+              <div>{task.title}</div>
+              <div>{task.description}</div>
+              <div>{task.category}</div>
+              <button onClick={()=>{deleteHandler(index)}}>Delete</button>
+              <button onClick={()=>{doneHandler(index)}}>Done</button>
+            </div>
+          )
+        })}
+        <label >Title</label>
+        <input type='text' value={title} name="title" onChange={(e)=>{
+          setTitle(e.target.value);
+        }}/>
+        <label >Description</label>
+         <input type='text' value={description} name="description" onChange={(e)=>{
+          setDescription(e.target.value);
+        }}/>
+        <label>Category</label>
+         <input type='text' value={category} name="category" onChange={(e)=>{
+          setCategory(e.target.value);
+        }}/>
+        <button onClick={()=>{addHandler()}}>Add</button>
       </div>
-      {isImageOpen && <Overlay url={isImageOpen} handleClose={() => setIsImageOpen(null)} />}
-
-      <div className="save-status">{isSaving ? <span>Saving...</span> : <span>Last saved {timeSinceLastSave} seconds ago</span>}</div>
     </>
   );
 };
